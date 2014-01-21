@@ -2,6 +2,28 @@
 ## Eclipse
 #################
 
+*.dep
+*.p1
+*.pre
+*.mk
+*.properties
+*.bash
+*.xml
+*.as
+*.cof
+*.hex
+*.hxl
+*.lst
+*.map
+*.mcp
+*.mcs
+*.mcw
+*.rlf
+*.sdb
+*.sym
+*funclist
+
+
 *.pydevproject
 .project
 .metadata
