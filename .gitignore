@@ -2,6 +2,9 @@
 ## Eclipse
 #################
 
+*.a
+*.inx
+*makefile
 *.dep
 *.p1
 *.pre
