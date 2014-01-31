@@ -20,7 +20,7 @@
 #include <libpic30.h>           // library for the delay function
 
 /*************** Constants Declaration ***********************/
-
+#pragma config FWDTEN = OFF
 
 /*************** Function Prototype ***************************/
 void initialize();
