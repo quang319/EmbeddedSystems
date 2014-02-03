@@ -1,0 +1,76 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<title>Lab2_withMacro.c</title>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8">
+<style type="text/css">
+<!--
+body {color: #000000; background-color: #ffffff; font-family: Monospaced}
+pre {color: #000000; background-color: #ffffff; font-family: Monospaced}
+table {color: #000000; background-color: #e9e8e2; font-family: Monospaced}
+.comment {color: #969696}
+.line-number {background-color: #e9e8e2}
+.preprocessor-system-include-literal {color: #ce7b00}
+.keyword-directive {color: #0000e6}
+.preprocessor-keyword-directive {color: #009b00}
+-->
+</style>
+</head>
+<body>
+<table width="100%"><tr><td align="center">C:\Users\Quang\Dropbox\School\Spring 2014\EmbeddedSystems\Lab 2\Lab 2.X\Lab2_withMacro.c</td></tr></table>
+<pre>
+<span class="line-number"> 1</span> <span class="comment">/**</span><span class="comment">**********************************************************</span><span class="comment">*/</span>
+<span class="line-number"> 2</span> <span class="comment">//  Project:    Lab 2</span>
+<span class="line-number"> 3</span> <span class="comment">//</span>
+<span class="line-number"> 4</span> <span class="comment">//  Name:   Quang Nguyen</span>
+<span class="line-number"> 5</span> <span class="comment">//  Date:   1/24/2013</span>
+<span class="line-number"> 6</span> <span class="comment">//</span>
+<span class="line-number"> 7</span> <span class="comment">//  Function:</span>
+<span class="line-number"> 8</span> <span class="comment">//      Turn on RA0-7 for 256 instructi</span><span class="comment">ons and then off for 256 instructions</span>
+<span class="line-number"> 9</span> <span class="comment">//</span>
+<span class="line-number">10</span> <span class="comment">//  Pins used:  Lower Byte of port A</span>
+<span class="line-number">11</span> <span class="comment">//</span>
+<span class="line-number">12</span> <span class="comment">//  Comments</span>
+<span class="line-number">13</span> <span class="comment">//      This code was written with macro</span>
+<span class="line-number">14</span> <span class="comment">//</span>
+<span class="line-number">15</span> <span class="comment">/**</span><span class="comment">*************************</span><span class="comment">*********************************</span><span class="comment">*/</span>
+<span class="line-number">16</span> 
+<span class="line-number">17</span> <span class="comment">/**</span><span class="comment">************* </span><span class="comment">Library</span> <span class="comment">includes</span><span class="comment">****************************</span><span class="comment">*/</span>
+<span class="line-number">18</span> <span class="preprocessor-keyword-directive">#</span><span class="preprocessor-keyword-directive">include</span> <span class="preprocessor-system-include-literal">&lt;p33FJ256GP710A.h&gt;</span>
+<span class="line-number">19</span> <span class="preprocessor-keyword-directive">#</span><span class="preprocessor-keyword-directive">define</span> FCY 16000000            <span class="comment">// </span><span class="comment">Constant needed for the libpic30.h library</span>
+<span class="line-number">20</span> <span class="preprocessor-keyword-directive">#</span><span class="preprocessor-keyword-directive">include</span> <span class="preprocessor-system-include-literal">&lt;libpic30.h&gt;</span>           <span class="comment">// library for the delay function</span>
+<span class="line-number">21</span> 
+<span class="line-number">22</span> <span class="comment">/**</span><span class="comment">************* </span><span class="comment">Constants</span> <span class="comment">Declaration</span><span class="comment"> **********************</span><span class="comment">*/</span>
+<span class="line-number">23</span> <span class="preprocessor-keyword-directive">#</span><span class="preprocessor-keyword-directive">pragma</span> config FWDTEN = OFF
+<span class="line-number">24</span> 
+<span class="line-number">25</span> <span class="comment">/**</span><span class="comment">************* </span><span class="comment">Function</span> <span class="comment">Prototype</span><span class="comment"> **************************</span><span class="comment">*/</span>
+<span class="line-number">26</span> <span class="keyword-directive">void</span> initialize();
+<span class="line-number">27</span> 
+<span class="line-number">28</span> <span class="comment">/**</span><span class="comment">***********</span><span class="comment">** </span><span class="comment">Main</span> <span class="comment">Program</span><span class="comment"> *******************************</span><span class="comment">*/</span>
+<span class="line-number">29</span> <span class="keyword-directive">int</span> main() {
+<span class="line-number">30</span>     <span class="comment">// setting up everything</span>
+<span class="line-number">31</span>     initialize();
+<span class="line-number">32</span> 
+<span class="line-number">33</span>     <span class="comment">/**</span><span class="comment">************* </span><span class="comment">Main</span> <span class="comment">Loop</span><span class="comment"> **********************************</span><span class="comment">*/</span>
+<span class="line-number">34</span>     <span class="keyword-directive">while</span> (1)
+<span class="line-number">35</span>     {
+<span class="line-number">36</span>         PORTA = 0xFF;
+<span class="line-number">37</span>         __delay32(8000000);             <span class="comment">// Delay for 256 instructions</span>
+<span class="line-number">38</span>         PORTA = 0;                  <span class="comment">// Turn port off</span>
+<span class="line-number">39</span>         __delay32(8000000);             <span class="comment">// Delay for 256 instructions</span>
+<span class="line-number">40</span>     }
+<span class="line-number">41</span> 
+<span class="line-number">42</span>     <span class="keyword-directive">return</span> 1;
+<span class="line-number">43</span> }
+<span class="line-number">44</span> 
+<span class="line-number">45</span> <span class="comment">/**</span><span class="comment">**************** </span><span class="comment">Setup</span> <span class="comment">function</span><span class="comment"> ******************************</span><span class="comment">*/</span>
+<span class="line-number">46</span> <span class="keyword-directive">void</span> initialize()
+<span class="line-number">47</span> {
+<span class="line-number">48</span>     <span class="comment">// Setting up PORT A</span>
+<span class="line-number">49</span>     AD1PCFGH = 0xFF;                <span class="comment">// Turn of ADC for Module 1</span>
+<span class="line-number">50</span>     TRISA = 0x00;                   <span class="comment">// Port A to output</span>
+<span class="line-number">51</span> }
+<span class="line-number">52</span> 
+<span class="line-number">53</span> 
+</pre></body>
+</html>

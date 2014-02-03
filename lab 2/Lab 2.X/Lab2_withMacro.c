@@ -5,7 +5,7 @@
 //  Date:   1/24/2013
 //
 //  Function:
-//      Turn on RA0-7 for 256 instructions and then off for 256 instructions
+//      Turn on RA0-7 for o.5 s and then off for 0.5 s
 //
 //  Pins used:  Lower Byte of port A
 //
@@ -34,9 +34,9 @@ int main() {
     while (1)
     {
         PORTA = 0xFF;
-        __delay32(256);             // Delay for 256 instructions
+        __delay32(8000000);             // Delay for 256 instructions
         PORTA = 0;                  // Turn port off
-        __delay32(256);             // Delay for 256 instructions
+        __delay32(8000000);             // Delay for 256 instructions
     }
 
     return 1;
