@@ -28,15 +28,15 @@
  *                      The lower 8 bits of PORTA
  *                          [Extra Credit]
  *                      RD6 and RD7
- *
- *  Peripherals used:
- *                      TIMER 1
+ *TIMER 1
  *                          To get an interrupt every 1 seconds
  *                          External clock = 32.768 KHz
  *                          1/32.768 KHz = 30.517 us
  *                          with prescaler at 8
  *                          30.517 us * 8 = 0.244136 ms
  *                          1/0.244136 = 4096 clock pulses
+ *  Peripherals used:
+ *                      
  *
  *
  *  Comments:
