@@ -465,3 +465,4 @@ void digitCheck(int *FirstDigit, int *SecondDigit)
         (*SecondDigit)++;
     }
 }
+
