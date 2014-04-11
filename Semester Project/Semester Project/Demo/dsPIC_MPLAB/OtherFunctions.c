@@ -1,4 +1,44 @@
 #include "OtherFunctions.h"
+#include <math.h>
+
+/***************************************************
+ *
+ * Name:            RmsCalc
+ * Parameters:
+ *          int *Value
+ * Return:  int
+ * Pins used:        None
+ * Function:
+ *          This function will calculate the RMS value
+ *          from 120 data points and return the result
+ *          as a int
+ *
+ *          RMS is calculated by first squaring the value,
+ *          summing the value, averaging the result, and finally
+ *          finding the square root of the result
+ *
+ ***************************************************/
+
+int RmsCalc (int *Value)
+{
+
+    long int Result = 0;
+    int i;
+    // Squaring and summing the data points
+    for (i = 0; i < 120; i++)
+    {
+        Result += ( (*(Value + i)) * (*(Value + i)) );
+    }
+    //Finding the average
+    Result = (long int)(Result / 120);
+    // Square root the result
+    // sqrt takes a double and return a double therefore we need to cast
+    Result = (long double)(sqrt( (double) Result) );
+
+    // The value of Result should be small enough now so we don't need to use
+    // long double anymore
+    return (double) Result;
+}
 
 
 /***************************************************

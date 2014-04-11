@@ -21,6 +21,7 @@
  *
  *******************************************************************************/
 #include <p33FJ256GP710A.h>
+#include "ADC.h"
 
 /* Standard includes. */
 #include <stdio.h>
@@ -31,6 +32,7 @@
 #include "queue.h"
 #include "croutine.h"
 #include <portmacro.h>
+#include <semphr.h>
 
 /* Demo application includes. */
 #include "BlockQ.h"
@@ -43,7 +45,7 @@
 #include "timertest.h"
 
 /* User's includes  */
-#include "ROSTasks.h"
+#include "ADC.h"
 
 /*******************************************************************************
  *
@@ -80,18 +82,40 @@ typedef struct
 xQueueHandle LCDDisplayinfo;
 char RTCFlag = 1; //This global variable can be used to signal that the button to display the RTC
 //has been pressed.  Ideally we could have done this with a semiphore.
+
+
+int	*DMAptr;
+volatile unsigned int	VSignal[120], ISignal[120];
+volatile char BufferFlag;
+
+/*******************************************************************************
+ *
+ *                      Semaphore Declarations
+ *
+ *******************************************************************************/
+xSemaphoreHandle DmaSemaphore;
+/*******************************************************************************
+ *
+ *                      Task Declarations
+ *
+ *******************************************************************************/
+void buttonPushCounter( void *pvParameters);
+void rtcTimer(void *pvParameters);
+void writeLcd (void *pvParameters);
+void prvSetupHardware( void );
+void vApplicationIdleHook(void);
+
+void dmaHandler (void *pvParameters);
+
 /*******************************************************************************
  *
  *                      Function Prototype
  *
  *******************************************************************************/
 void initialize();
-static void prvSetupHardware( void );
+
 char IntToChar(unsigned int Digit);
-static void ButtonPushCounter( void *pvParameters);
-void RTCTimer(void *pvParameters);
-void WriteLCD (void *pvParameters);
-void vApplicationIdleHook(void);
+
 
 void displayCounter(int Count, char *LCD);
 void digitCheck(int *FirstDigit, int *SecondDigit);
@@ -124,6 +148,11 @@ int main() {
 void initialize() {
     /* Configure any hardware required for this demo. */
     PLLFBD = 0x001E; //external osc is 8MHz using defaults Fosc=8MHZ /8 (0x1E+2)=32 MHz
+
+    // Setting up ADC for DMA Interrupt
+    ADC_Init();
+    // Create semaphore for DMA interrupt
+    vSemaphoreCreateBinary(DmaSemaphore);
     //RTOS setup of hardware
     prvSetupHardware();
     Init_LCD();//Initialize the LCD this must be done first before the LCD is to be used.
@@ -132,12 +161,20 @@ void initialize() {
     }
     home_clr(); // start display at top line left most character
     /* Create Tasks*/
-    xTaskCreate(ButtonPushCounter,"Task Read Swtchs", 200, NULL, 2, NULL);
-    xTaskCreate(RTCTimer, "Task RTC", 200, NULL, 2, NULL);
-    xTaskCreate(WriteLCD, "Write LCD",200, NULL, 1, NULL); //notice that this task has lower priority.
+    xTaskCreate(dmaHandler, "Task for DMA", 500, NULL, 3, NULL );
+    xTaskCreate(buttonPushCounter,"Task Read Swtchs", 200, NULL, 2, NULL);
+    xTaskCreate(rtcTimer, "Task RTC", 200, NULL, 2, NULL);
+    xTaskCreate(writeLcd, "Write LCD",200, NULL, 1, NULL); //notice that this task has lower priority.
     /* create the queue for the string to be displayed.  Length = 2 each chunk holds 16 char string*/
     LCDDisplayinfo = xQueueCreate(1,sizeof (xLCD));
 
+
+    int AdcData[120], i;
+    for (i = 0; i < 120; i++)
+        AdcData[i] = 1024;
+
+    int Rms;
+    Rms = RmsCalc(&AdcData);
     /* start the scheduler. */
     vTaskStartScheduler();
 }
@@ -147,21 +184,34 @@ void initialize() {
  *                      Interrupt Service Routine
  *
  *******************************************************************************/
-
+void __attribute__((interrupt)) _DMA0Interrupt(void)
+{
+    static portBASE_TYPE HigherPriority;
+    xSemaphoreGiveFromISR (DmaSemaphore, &HigherPriority);
+    _DMA0IF = 0;
+}
 /*******************************************************************************
  *
  *                      ROS tasks
  *
  *******************************************************************************/
 //This is required by the RTOS, DO NOT MOTIFY
-static void prvSetupHardware( void )
+void prvSetupHardware( void )
 {
 	vParTestInitialise();
 }
 
+void dmaHandler (void *pvParameters)
+{
+    while(1)
+    {
+        xSemaphoreTake(DmaSemaphore, portMAX_DELAY);
+        asm("NOP");
+    }
+}
 
 /*-----------------------------------------------------------*/
-static void ButtonPushCounter( void *pvParameters)
+void buttonPushCounter( void *pvParameters)
 {
     /* This task will read the pushbuttons, since most pushes of the button will take more than
     10 ms it needs to only run every 10 ms or l00ms if in the middle of a button push read.
@@ -235,7 +285,7 @@ static void ButtonPushCounter( void *pvParameters)
     } // end of for loop
 }
 
-void WriteLCD(void *pvParameters)
+void writeLcd(void *pvParameters)
 {
     // This is lower priority task it will write charaters to the LCD screen in response to the button
     //pushes an example API of reading the queue is given
@@ -293,7 +343,7 @@ void WriteLCD(void *pvParameters)
     }//end of for loop
 }
 
-void RTCTimer(void *pvParameters)
+void rtcTimer(void *pvParameters)
 { //This is where you place your code to keep track of the RTC and the display that it will show.
   //Initialize and declare
     /* In order to get true timing you should use the periodic delay function to set this up

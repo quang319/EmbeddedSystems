@@ -1,4 +1,4 @@
-/* 
+/*
  * File:   ROSTasks.h
  * Author: Quang
  *
@@ -8,13 +8,6 @@
 #ifndef ROSTASKS_H
 #define	ROSTASKS_H
 
-extern xQueueHandle LCDDisplayinfo;
-extern char RTCFlag;
-
-static void ButtonPushCounter( void *pvParameters);
-void WriteLCD(void *pvParameters);
-void RTCTimer(void *pvParameters);
-void vApplicationIdleHook( void);
 
 #endif	/* ROSTASKS_H */
 

@@ -20,8 +20,8 @@ _FWDT(FWDTEN_OFF);
 
 //*********** Global Variables
 	int	*DMAptr;
-	unsigned int	VSignal[120], ISignal[120];
-	char BufferFlag;
+	volatile unsigned int	VSignal[120], ISignal[120];
+	volatile char BufferFlag;
 
 //******* ISRs
 void __attribute__((interrupt)) _DMA0Interrupt(void)
@@ -47,7 +47,7 @@ void __attribute__((interrupt)) _DMA0Interrupt(void)
 	_DMA0IF = 0;
 	}
 //************************************************ Main *******************************8
-main()
+int main()
 {
 // Initialization code
 PLLFBD = 0x001E; //external osc is 8MHz using defaults Fosc=8MHZ /8 (0x1E+2)=32 MHz
