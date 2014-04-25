@@ -12,7 +12,7 @@
 void displayCounter(int Count, char *LCD);
 void digitCheck(int *FirstDigit, int *SecondDigit);
 void BinaryToDecimal ( int Value, char *TenthPlace, char *OnePlace);
-int RmsCalc (int *Value);
+unsigned int rmsCalc (int *Value);
 
 
 #endif	/* OTHERFUNCTIONS_H */

@@ -3,10 +3,10 @@
 
 /***************************************************
  *
- * Name:            RmsCalc
+ * Name:            rmsCalc
  * Parameters:
  *          int *Value
- * Return:  int
+ * Return:  unsigned int
  * Pins used:        None
  * Function:
  *          This function will calculate the RMS value
@@ -19,25 +19,36 @@
  *
  ***************************************************/
 
-int RmsCalc (int *Value)
+unsigned int rmsCalc(int *Value)
 {
-
-    long int Result = 0;
+    int TestingResult = 0;
     int i;
+    int *Temp = Value;
+    int TempVar = 0;
+//    Result  = 0;
     // Squaring and summing the data points
     for (i = 0; i < 120; i++)
     {
-        Result += ( (*(Value + i)) * (*(Value + i)) );
+        Temp += i;
+        TempVar = *Temp;
+        TestingResult = TempVar * TempVar;
     }
     //Finding the average
-    Result = (long int)(Result / 120);
+    TestingResult = (long int)(TestingResult / 120);
     // Square root the result
-    // sqrt takes a double and return a double therefore we need to cast
-    Result = (long double)(sqrt( (double) Result) );
+    int Square = 0;
+    int SquareRootResult = 0;
+    while (Square <= TestingResult)
+    {
+        SquareRootResult++;
+        Square = SquareRootResult * SquareRootResult;
+    }
+    if (Square > TestingResult)
+        SquareRootResult--;
+    // Store the result of the square root
+    TestingResult = SquareRootResult;
 
-    // The value of Result should be small enough now so we don't need to use
-    // long double anymore
-    return (double) Result;
+    return TestingResult;
 }
 
 

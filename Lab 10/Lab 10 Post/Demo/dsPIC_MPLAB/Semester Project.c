@@ -84,10 +84,6 @@ char RTCFlag = 1; //This global variable can be used to signal that the button t
 //has been pressed.  Ideally we could have done this with a semiphore.
 
 
-int	*DMAptr;
-volatile unsigned int	VSignal[120], ISignal[120];
-volatile char BufferFlag;
-
 /*******************************************************************************
  *
  *                      Semaphore Declarations
@@ -168,13 +164,6 @@ void initialize() {
     /* create the queue for the string to be displayed.  Length = 2 each chunk holds 16 char string*/
     LCDDisplayinfo = xQueueCreate(1,sizeof (xLCD));
 
-
-    int AdcData[120], i;
-    for (i = 0; i < 120; i++)
-        AdcData[i] = 1024;
-
-    int Rms;
-    Rms = RmsCalc(&AdcData);
     /* start the scheduler. */
     vTaskStartScheduler();
 }
@@ -203,10 +192,24 @@ void prvSetupHardware( void )
 
 void dmaHandler (void *pvParameters)
 {
+    int	*DMAptr;
+    unsigned int VSignal[120], ISignal[120];
+    int Vrms = 0;
+    int Irms = 0;
     while(1)
     {
         xSemaphoreTake(DmaSemaphore, portMAX_DELAY);
-        asm("NOP");
+
+        int i;
+	DMAptr = BeginDMA;
+	for (i=0; i<120; i++)
+        {
+            VSignal[i] = *DMAptr;
+            DMAptr++;
+            ISignal[i] = *DMAptr;
+            DMAptr++;
+        }
+        Vrms = rmsCalc(VSignal);
     }
 }
 
