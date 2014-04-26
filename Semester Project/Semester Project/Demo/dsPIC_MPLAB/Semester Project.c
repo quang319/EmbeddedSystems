@@ -22,7 +22,7 @@
  *******************************************************************************/
 #include <p33FJ256GP710A.h>
 #include "ADC.h"
-
+#include <string.h>
 /* Standard includes. */
 #include <stdio.h>
 
@@ -80,9 +80,6 @@ typedef struct
  *
  *******************************************************************************/
 xQueueHandle LCDDisplayinfo;
-char RTCFlag = 1; //This global variable can be used to signal that the button to display the RTC
-//has been pressed.  Ideally we could have done this with a semiphore.
-
 
 /*******************************************************************************
  *
@@ -95,8 +92,7 @@ xSemaphoreHandle DmaSemaphore;
  *                      Task Declarations
  *
  *******************************************************************************/
-void buttonPushCounter( void *pvParameters);
-void rtcTimer(void *pvParameters);
+void buttonPush( void *pvParameters);
 void writeLcd (void *pvParameters);
 void prvSetupHardware( void );
 void vApplicationIdleHook(void);
@@ -169,8 +165,7 @@ void initialize() {
     /*****************************************************
     *               Create Tasks and Queue
     *****************************************************/
-    xTaskCreate(buttonPushCounter,"Task Read Swtchs", 200, NULL, 2, NULL);
-    xTaskCreate(rtcTimer, "Task RTC", 200, NULL, 2, NULL);
+    xTaskCreate(buttonPush,"Task Read Swtchs", 200, NULL, 2, NULL);
     xTaskCreate(writeLcd, "Write LCD",200, NULL, 1, NULL); //notice that this task has lower priority.
     /* create the queue for the string to be displayed.  Length = 2 each chunk holds 16 char string*/
     LCDDisplayinfo = xQueueCreate(1,sizeof (xLCD));
@@ -225,43 +220,38 @@ void prvSetupHardware( void )
 // }
 
 /*-----------------------------------------------------------*/
-void buttonPushCounter( void *pvParameters)
+void buttonPush( void *pvParameters)
 {
     /* This task will read the pushbuttons, since most pushes of the button will take more than
     10 ms it needs to only run every 10 ms or l00ms if in the middle of a button push read.
     The API for a delay is: vTaskDelay(10); to delay for 10ms before being active again */
 
-    /*
-    char LCDDisplay[17] = "Count = 00000   ";
+    
+    xLCD LCDDisplay = {.Line1 = "Welcome! Please ", .Line2 = "Press S3 to Cont"};
+    char DisplayIndex = 0;
+    char DisplayFlag = 0;
 
-    int Rd6ChangeStateFlag = 0;
-    int Rd7ChangeStateFlag = 0;
-    unsigned int Rd6Counter = 0;
+    int Rd6ChangeStateFlag = 0;     // Use to indicate whether the user is holding down the button
     int BlockingFlag = 0;           // 0 = 10 ms
                                     // 1 = 100 ms
-    xQueueSendToBack (LCDDisplayinfo, LCDDisplay, 0);
-    */
-
+    xQueueSendToFront(LCDDisplayinfo, &LCDDisplay,0);
     /* start endless loop*/
     for( ;; )
     {
-
-        /*
+        /*****************************************************
+        *   Capture button presses
+        *   Increment DisplayIndex if S3 is pressed
+        *   Roll back to 0 after 3
+        *****************************************************/
         // if RD6(S3) is pressed
         // Display count on LCD
         if ( (_RD6 == 0) && (Rd6ChangeStateFlag == 0))
         {
-            RTCFlag = 0;
             Rd6ChangeStateFlag = 1;
-
-            //Increment Counter
-            Rd6Counter++;
-            // Load the LCD with the count display
-            displayCounter(Rd6Counter, LCDDisplay);
-
-            //Put the updated count into the queue
-            xQueueSendToBack (LCDDisplayinfo, LCDDisplay, 100);
-
+            DisplayIndex++;
+            DisplayFlag = 1;
+            if (DisplayIndex >= 4)
+                DisplayIndex = 0;
             //Scan again every 100 ms
             BlockingFlag = 1;
         }
@@ -272,30 +262,56 @@ void buttonPushCounter( void *pvParameters)
             BlockingFlag = 0;
         }
 
-        // if RD7(S6) is pressed
-        // Display RTC time on LCD
-        if ( (_RD7 == 0) && (Rd7ChangeStateFlag == 0))
+        /*****************************************************
+        *  Loading the queue with the proper message
+        *   Screen 0
+        *       -   Vrms = XXX.XX V
+        *       -   Irms = XXX.XX A
+        *   Screen 1
+        *       -   Average Power
+        *       -   = XXX.XX W
+        *   Screen 2
+        *       -   Instan. Power
+        *       -   = XXX.XX VA
+        *   Screen 3
+        *       -   Phase Angle
+        *       -   = Leading/Lagging
+        *
+        *****************************************************/
+        if ((DisplayIndex == 0) && (DisplayFlag == 1))
         {
-            RTCFlag = 1;
-            Rd7ChangeStateFlag = 1;
-            //Scan again every 100 ms
-            BlockingFlag = 1;
+            strcpy(LCDDisplay.Line1, "Vrms = XXX.XX V ");
+            strcpy(LCDDisplay.Line2, "Irms = XXX.XX A ");
         }
-        // If the user just released the button
-        else if ( (_RD7 == 1) && (Rd7ChangeStateFlag == 1))
+        else if ((DisplayIndex == 1) && (DisplayFlag == 1))
         {
-            Rd7ChangeStateFlag = 0;
-            BlockingFlag = 0;
+            strcpy(LCDDisplay.Line1, "Average Power   ");
+            strcpy(LCDDisplay.Line2, "XXX.XX W        ");
+        }
+        else if ((DisplayIndex == 2) && (DisplayFlag == 1))
+        {
+            strcpy(LCDDisplay.Line1, "Instan. Power   ");
+            strcpy(LCDDisplay.Line2, "XXX.XX W        ");
+        }
+        else if ((DisplayIndex == 3) && (DisplayFlag == 1))
+        {
+            strcpy(LCDDisplay.Line1, "Phase Angle     ");
+            strcpy(LCDDisplay.Line2, "Leading         ");
         }
 
-        if (BlockingFlag == 0)
-            vTaskDelay(10);
-//            vTaskDelay( 100 / portTICK_RATE_MS);
+        if (DisplayFlag == 1)
+        {
+            xQueueSendToFront(LCDDisplayinfo, &LCDDisplay,0);
+            DisplayFlag = 0;
+        }
+
+        // How long to block depends on if the user is holding the button down or not.
+        // If hold = delay for 100 ms
+        // if not holding = delay for 10 ms
+        if (BlockingFlag == 0){
+            vTaskDelay(10/ portTICK_RATE_MS); }
         else
-            vTaskDelay(100);
-//            vTaskDelay( 1000 / portTICK_RATE_MS);
-        */
-        vTaskDelay( 1000 / portTICK_RATE_MS);
+            vTaskDelay(100/ portTICK_RATE_MS);
     } // end of for loop
 }
 
@@ -345,7 +361,7 @@ void writeLcd(void *pvParameters)
                     SecondLineFlag = 1;
                 }
                 // Print line 2
-                else if ((LCDCounter >= 16) && (SecondLineFlag == 1) )
+                else if ((LCDCounter >= 16) && (LCDCounter <= 32) && (SecondLineFlag == 1) )
                 {
                     // Printer Character on LCD
                     lcd_data( LCDDisplayString.Line2[LCDCounter - 16] );
@@ -357,25 +373,26 @@ void writeLcd(void *pvParameters)
     }//end of for loop
 }
 
-void rtcTimer(void *pvParameters)
-{ //This is where you place your code to keep track of the RTC and the display that it will show.
-  //Initialize and declare
-    /* In order to get true timing you should use the periodic delay function to set this up
-    some code is given... see lecture 17 for details
-    in addition you will want to write a string to queue for either RTC display or count display
-    sample API function call is given to do this. */
-
-    portTickType xLastWakeTime;
-    xLastWakeTime = xTaskGetTickCount();
-    xLCD LCDDisplay = {.Line1 = "Hello World!    ", .Line2 = "I am awesome!   "};
-    for( ;; )
-    {
-        
-        xQueueSendToBack(LCDDisplayinfo, &LCDDisplay, 0);
-        // The LCD needs more than .5 second to print the 2 lines
-        vTaskDelayUntil(&xLastWakeTime,700); // wait 0.5 seconds
-    }
-}
+//
+//void rtcTimer(void *pvParameters)
+//{ //This is where you place your code to keep track of the RTC and the display that it will show.
+//  //Initialize and declare
+//     In order to get true timing you should use the periodic delay function to set this up
+//    some code is given... see lecture 17 for details
+//    in addition you will want to write a string to queue for either RTC display or count display
+//    sample API function call is given to do this.
+//
+//    portTickType xLastWakeTime;
+//    xLastWakeTime = xTaskGetTickCount();
+//   // xLCD LCDDisplay = {.Line1 = "Hello World!    ", .Line2 = "I am awesome!   "};
+//    for( ;; )
+//    {
+//
+//        //xQueueSendToBack(LCDDisplayinfo, &LCDDisplay, 0);
+//        // The LCD needs more than .5 second to print the 2 lines
+//        vTaskDelayUntil(&xLastWakeTime,700); // wait 0.5 seconds
+//    }
+//}
 
 
 void vApplicationIdleHook( void)
