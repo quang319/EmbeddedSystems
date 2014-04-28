@@ -74,13 +74,32 @@ typedef struct
     char Line1[17];
     char Line2[17];
 } xLCD;
+
+typedef struct 
+{
+    int Vrms;
+    int Irms;
+    int Paverage;
+    int Papparent;
+    int Phase;
+} xCalc;
 /*******************************************************************************
  *
  *                      Global Variable Declarations
  *
  *******************************************************************************/
 xQueueHandle LCDDisplayinfo;
+unsigned int VSignal[120], ISignal[120];
 
+long VoltageSum = 0, VoltageSquareSum = 0;
+long VoltageSumSquareAverage = 0;          // Contains result of ( ( sum(V)^2) / N)
+int VoltagePreSquareRoot = 0;
+
+long CurrentSum = 0, CurrentSquareSum = 0;
+long CurrentSumSquareAverage = 0;          // Contains result of ( ( sum(V)^2) / N)
+int CurrentPreSquareRoot = 0;
+
+long PowerSum = 0;                         // Contains sum(V*I)
 /*******************************************************************************
  *
  *                      Semaphore Declarations
@@ -97,13 +116,14 @@ void writeLcd (void *pvParameters);
 void prvSetupHardware( void );
 void vApplicationIdleHook(void);
 
-void dmaHandler (void *pvParameters);
+static void dmaHandler (void *pvParameters);
 
 /*******************************************************************************
  *
  *                      Function Prototype
  *
  *******************************************************************************/
+
 void initialize();
 
 char IntToChar(unsigned int Digit);
@@ -146,12 +166,12 @@ void initialize() {
     /*****************************************************
     *               Setting up DMA and Semaphore
     *****************************************************/
-    // // Setting up ADC for DMA Interrupt
-    // ADC_Init();
-    // // Create semaphore for DMA interrupt
-    // vSemaphoreCreateBinary(DmaSemaphore);
-    // // Create Semaphore handle
-    // xTaskCreate(dmaHandler, "Task for DMA", 500, NULL, 3, NULL );
+     // Setting up ADC for DMA Interrupt
+      ADC_Init();
+    // Create semaphore for DMA interrupt
+    vSemaphoreCreateBinary(DmaSemaphore);
+    // Create Semaphore handle
+    xTaskCreate(dmaHandler, "Task for DMA", 1000, NULL, 3, NULL );
     
     /*****************************************************
     *               Initialize LCD
@@ -179,12 +199,16 @@ void initialize() {
  *                      Interrupt Service Routine
  *
  *******************************************************************************/
-// void __attribute__((interrupt)) _DMA0Interrupt(void)
-// {
-//     static portBASE_TYPE HigherPriority;
-//     xSemaphoreGiveFromISR (DmaSemaphore, &HigherPriority);
-//     _DMA0IF = 0;
-// }
+void __attribute__((interrupt)) _DMA0Interrupt(void)
+ {
+    static signed portBASE_TYPE xHigherPriorityTaskWoken;
+    xHigherPriorityTaskWoken = pdFALSE;
+     // Unblock the task by releasing the semaphore.
+     xSemaphoreGiveFromISR( DmaSemaphore, &xHigherPriorityTaskWoken );
+     _DMA0IF = 0;
+    if (xHigherPriorityTaskWoken == pdTRUE)
+        taskYIELD();
+ }
 /*******************************************************************************
  *
  *                      ROS tasks
@@ -196,28 +220,61 @@ void prvSetupHardware( void )
     vParTestInitialise();
 }
 
-// void dmaHandler (void *pvParameters)
-// {
-//     int *DMAptr;
-//     unsigned int VSignal[120], ISignal[120];
-//     int Vrms = 0;
-//     int Irms = 0;
-//     while(1)
-//     {
-//         xSemaphoreTake(DmaSemaphore, portMAX_DELAY);
+void dmaHandler (void *pvParameters)
+{
+   int *DMAptr;
+   xCalc Data;
+   int i;
+   for( ;; )
+   {
+       // Block waiting for the semaphore to become available.
+       xSemaphoreTake(DmaSemaphore, portMAX_DELAY );
+           /****************************
+           *   Getting raw data from the DMA
+           *****************************/
+       asm("NOP");
+       DMAptr = BeginDMA;
+      for (i=0; i<120; i++)
+      {
+          VSignal[i] = *DMAptr;
+          DMAptr++;
+          ISignal[i] = *DMAptr;
+          DMAptr++;
+      }
+           /***************************
+           *   Calculate RMS, Average Power, Apparent Power, and Phase Angle
+           *
+           *   Vrms = sqrt( ( sum(V^2) - ( ( sum(V)^2) / N) ) / N)
+           *   Irms = sqrt( ( sum(I^2) - ( ( sum(I)^2) / N) ) / N)
+           *   Pavg = ( sum(V*I) / N) - ( ( sum(V) * (sum(I) ) ) / N^2)
+           *   Papp = Vrms * Irms
+           ****************************/
 
-//         int i;
-//     DMAptr = BeginDMA;
-//     for (i=0; i<120; i++)
-//         {
-//             VSignal[i] = *DMAptr;
-//             DMAptr++;
-//             ISignal[i] = *DMAptr;
-//             DMAptr++;
-//         }
-//         Vrms = rmsCalc(VSignal);
-//     }
-// }
+           long PowerSum = 0;                         // Contains sum(V*I)
+
+           // Performing all summations
+           for (i = 0; i < 120; i++)
+           {
+               //sum(V)
+               VoltageSum += VSignal[i];
+               //sum(V^2)
+               VoltageSquareSum += (long)VSignal[i] * (long)VSignal[i];
+
+               //sum(I)
+               CurrentSum += ISignal[i];
+               //sum(I^2)
+               CurrentSquareSum += (long)ISignal[i] * (long)ISignal[i];
+
+               //sum(V*I)
+               PowerSum += (long)VSignal[i] * (long)ISignal[i];
+           }
+          // xSemaphoreGive( DmaSemaphore );
+           // We have finished our task.  Return to the top of the loop where
+           // we will block on the semaphore until it is time to execute
+           // again.  Note when using the semaphore for synchronisation with an
+           // ISR in this manner there is no need to 'give' the semaphore back.
+   }
+}
 
 /*-----------------------------------------------------------*/
 void buttonPush( void *pvParameters)
@@ -286,17 +343,17 @@ void buttonPush( void *pvParameters)
         else if ((DisplayIndex == 1) && (DisplayFlag == 1))
         {
             strcpy(LCDDisplay.Line1, "Average Power   ");
-            strcpy(LCDDisplay.Line2, "XXX.XX W        ");
+            strcpy(LCDDisplay.Line2, "= XXX.XX W      ");
         }
         else if ((DisplayIndex == 2) && (DisplayFlag == 1))
         {
             strcpy(LCDDisplay.Line1, "Instan. Power   ");
-            strcpy(LCDDisplay.Line2, "XXX.XX W        ");
+            strcpy(LCDDisplay.Line2, "= XXX.XX W      ");
         }
         else if ((DisplayIndex == 3) && (DisplayFlag == 1))
         {
             strcpy(LCDDisplay.Line1, "Phase Angle     ");
-            strcpy(LCDDisplay.Line2, "Leading         ");
+            strcpy(LCDDisplay.Line2, "= Leading       ");
         }
 
         if (DisplayFlag == 1)
