@@ -23,6 +23,7 @@
 #include <p33FJ256GP710A.h>
 #include "ADC.h"
 #include <string.h>
+#include <math.h>
 /* Standard includes. */
 #include <stdio.h>
 
@@ -95,19 +96,19 @@ unsigned int VSignal[120], ISignal[120];
 
 long VoltageSum = 0, VoltageSquareSum = 0;
 long VoltageSumSquareAverage = 0;          // Contains result of ( ( sum(V)^2) / N)
-int VoltagePreSquareRoot = 0;
-int VoltageRMS = 0;
+long double VoltagePreSquareRoot = 0;
+long double VoltageRMS = 0;
 
 long CurrentSum = 0, CurrentSquareSum = 0;
 long CurrentSumSquareAverage = 0;          // Contains result of ( ( sum(V)^2) / N)
-int CurrentPreSquareRoot = 0;
-int CurrentRMS = 0;
+long double CurrentPreSquareRoot = 0;
+long double CurrentRMS = 0;
 
 long PowerSum = 0;                         // Contains sum(V*I)
-long PowerOp1 = 0;                          // Contains ( sum(V*I) / N)
-long PowerOp2 = 0;                          // Contains ( ( sum(V) * (sum(I) ) ) / N^2)
-long Pavg     = 0;
-long Papp     = 0;
+long double PowerOp1 = 0;                          // Contains ( sum(V*I) / N)
+long double PowerOp2 = 0;                          // Contains ( ( sum(V) * (sum(I) ) ) / N^2)
+long double Pavg     = 0;
+long double Papp     = 0;
 
 /*******************************************************************************
  *
@@ -285,21 +286,27 @@ void dmaHandler (void *pvParameters)
        // ( sum(V)^2) / N)
        VoltageSumSquareAverage = (long)( ( (long long)VoltageSum * (long long)VoltageSum ) / SAMPLES);
        // ( ( sum(V^2) - ( ( sum(V)^2) / N) ) / N)
-       VoltagePreSquareRoot = ( (double)( VoltageSquareSum - VoltageSumSquareAverage) / SAMPLES);
+       VoltagePreSquareRoot = (long double)( (long double)( VoltageSquareSum - VoltageSumSquareAverage) / SAMPLES);
        // Performing square root
-       VoltageRMS = intSquareRoot(VoltagePreSquareRoot);
+       VoltageRMS = sqrt(VoltagePreSquareRoot);
 
        // Now do the same for Current
        CurrentSumSquareAverage = (long)( ( (long long)CurrentSum * (long long)CurrentSum ) / SAMPLES);
        // ( ( sum(V^2) - ( ( sum(V)^2) / N) ) / N)
-       CurrentPreSquareRoot = (int)( ( CurrentSquareSum - CurrentSumSquareAverage) / SAMPLES);
+       CurrentPreSquareRoot = (long double)( (long double)( CurrentSquareSum - CurrentSumSquareAverage) / SAMPLES);
        // Performing square root
-       CurrentRMS = intSquareRoot(CurrentPreSquareRoot);
+       CurrentRMS = sqrt(CurrentPreSquareRoot);
 
-        PowerOp1 = PowerSum / SAMPLES;
-        PowerOp2 = (long)( ( (long long)VoltageSum * (long long)CurrentSum ) / SAMPLES_SQUARE);
+        PowerOp1 = (long double)PowerSum / SAMPLES;
+        PowerOp2 = (long double)( ( (long double)VoltageSum * (long double)CurrentSum ) / SAMPLES_SQUARE);
         Pavg = PowerOp1 - PowerOp2;
-        Papp = (long)VoltageRMS * (long)CurrentRMS;
+        Papp = VoltageRMS * CurrentRMS;
+
+        // Shift everything over by 100
+        VoltageRMS *= 100;
+        CurrentRMS *= 100;
+        Pavg       *= 100;
+        Papp       *= 100;
         asm("NOP");
           // xSemaphoreGive( DmaSemaphore );
            // We have finished our task.  Return to the top of the loop where
