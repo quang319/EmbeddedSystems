@@ -63,6 +63,8 @@ _FWDT(FWDTEN_OFF);
  *******************************************************************************/
 #define TRUE 1
 #define FALSE 0
+#define SAMPLES 120
+#define SAMPLES_SQUARE 14400
 
 /*******************************************************************************
  *
@@ -79,8 +81,8 @@ typedef struct
 {
     int Vrms;
     int Irms;
-    int Paverage;
-    int Papparent;
+    int Pavg;
+    int Papp;
     int Phase;
 } xCalc;
 /*******************************************************************************
@@ -94,12 +96,19 @@ unsigned int VSignal[120], ISignal[120];
 long VoltageSum = 0, VoltageSquareSum = 0;
 long VoltageSumSquareAverage = 0;          // Contains result of ( ( sum(V)^2) / N)
 int VoltagePreSquareRoot = 0;
+int VoltageRMS = 0;
 
 long CurrentSum = 0, CurrentSquareSum = 0;
 long CurrentSumSquareAverage = 0;          // Contains result of ( ( sum(V)^2) / N)
 int CurrentPreSquareRoot = 0;
+int CurrentRMS = 0;
 
 long PowerSum = 0;                         // Contains sum(V*I)
+long PowerOp1 = 0;                          // Contains ( sum(V*I) / N)
+long PowerOp2 = 0;                          // Contains ( ( sum(V) * (sum(I) ) ) / N^2)
+long Pavg     = 0;
+long Papp     = 0;
+
 /*******************************************************************************
  *
  *                      Semaphore Declarations
@@ -132,6 +141,8 @@ char IntToChar(unsigned int Digit);
 void displayCounter(int Count, char *LCD);
 void digitCheck(int *FirstDigit, int *SecondDigit);
 void BinaryToDecimal ( int Value, char *TenthPlace, char *OnePlace);
+
+int intSquareRoot(int Value);
 
 /*******************************************************************************
  *
@@ -234,7 +245,7 @@ void dmaHandler (void *pvParameters)
            *****************************/
        asm("NOP");
        DMAptr = BeginDMA;
-      for (i=0; i<120; i++)
+      for (i=0; i<SAMPLES; i++)
       {
           VSignal[i] = *DMAptr;
           DMAptr++;
@@ -246,28 +257,50 @@ void dmaHandler (void *pvParameters)
            *
            *   Vrms = sqrt( ( sum(V^2) - ( ( sum(V)^2) / N) ) / N)
            *   Irms = sqrt( ( sum(I^2) - ( ( sum(I)^2) / N) ) / N)
-           *   Pavg = ( sum(V*I) / N) - ( ( sum(V) * (sum(I) ) ) / N^2)
+           *   Paverage = ( sum(V*I) / N) - ( ( sum(V) * (sum(I) ) ) / N^2)
            *   Papp = Vrms * Irms
            ****************************/
+        VoltageSum = 0;
+        VoltageSquareSum = 0;
+        CurrentSum = 0;
+        CurrentSquareSum = 0;
+        PowerSum = 0;
+        
+       // Performing all summations
+       for (i = 0; i < SAMPLES; i++)
+       {
+           //sum(V)
+           VoltageSum += VSignal[i];
+           //sum(V^2)
+           VoltageSquareSum += (long)VSignal[i] * (long)VSignal[i];
 
-           long PowerSum = 0;                         // Contains sum(V*I)
+           //sum(I)
+           CurrentSum += ISignal[i];
+           //sum(I^2)
+           CurrentSquareSum += (long)ISignal[i] * (long)ISignal[i];
 
-           // Performing all summations
-           for (i = 0; i < 120; i++)
-           {
-               //sum(V)
-               VoltageSum += VSignal[i];
-               //sum(V^2)
-               VoltageSquareSum += (long)VSignal[i] * (long)VSignal[i];
+           //sum(V*I)
+           PowerSum += (long)VSignal[i] * (long)ISignal[i];
+       }
+       // ( sum(V)^2) / N)
+       VoltageSumSquareAverage = (long)( ( (long long)VoltageSum * (long long)VoltageSum ) / SAMPLES);
+       // ( ( sum(V^2) - ( ( sum(V)^2) / N) ) / N)
+       VoltagePreSquareRoot = ( (double)( VoltageSquareSum - VoltageSumSquareAverage) / SAMPLES);
+       // Performing square root
+       VoltageRMS = intSquareRoot(VoltagePreSquareRoot);
 
-               //sum(I)
-               CurrentSum += ISignal[i];
-               //sum(I^2)
-               CurrentSquareSum += (long)ISignal[i] * (long)ISignal[i];
+       // Now do the same for Current
+       CurrentSumSquareAverage = (long)( ( (long long)CurrentSum * (long long)CurrentSum ) / SAMPLES);
+       // ( ( sum(V^2) - ( ( sum(V)^2) / N) ) / N)
+       CurrentPreSquareRoot = (int)( ( CurrentSquareSum - CurrentSumSquareAverage) / SAMPLES);
+       // Performing square root
+       CurrentRMS = intSquareRoot(CurrentPreSquareRoot);
 
-               //sum(V*I)
-               PowerSum += (long)VSignal[i] * (long)ISignal[i];
-           }
+        PowerOp1 = PowerSum / SAMPLES;
+        PowerOp2 = (long)( ( (long long)VoltageSum * (long long)CurrentSum ) / SAMPLES_SQUARE);
+        Pavg = PowerOp1 - PowerOp2;
+        Papp = (long)VoltageRMS * (long)CurrentRMS;
+        asm("NOP");
           // xSemaphoreGive( DmaSemaphore );
            // We have finished our task.  Return to the top of the loop where
            // we will block on the semaphore until it is time to execute
@@ -465,3 +498,17 @@ void vApplicationIdleHook( void)
  *                      Other Functions
  *
  *******************************************************************************/
+int intSquareRoot(int Value)
+{
+    int i = 0, SquareResult = 0;
+    while (SquareResult < Value)
+    {
+        i++;
+        SquareResult = i * i;
+    }
+    if (SquareResult > Value)
+    {
+        i--;
+    }
+    return i;
+}
