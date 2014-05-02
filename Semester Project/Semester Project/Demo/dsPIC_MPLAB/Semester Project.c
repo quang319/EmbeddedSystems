@@ -66,7 +66,11 @@ _FWDT(FWDTEN_OFF);
 #define FALSE 0
 #define SAMPLES 120
 #define SAMPLES_SQUARE 14400
-#define FILTER_MAX 5
+#define FILTER_MAX 20
+#define VRMS_CONSTANT 0.75269
+#define IRMS_CONSTANT 0.10753
+#define PAVG_CONSTANT 0.0080934
+#define PAPP_CONSTANT 0.0080937
 /*******************************************************************************
  *
  *                      Type definition
@@ -80,14 +84,14 @@ typedef struct
 
 typedef struct
 {
-    int VrmsWhole;
-    int VrmsFractional;
-    int IrmsWhole;
-    int IrmsFractional;
-    int PavgWhole;
-    int PavgFractional;
-    int PappWhole;
-    int PappFractional;
+    unsigned int VrmsWhole;
+    unsigned int VrmsFractional;
+    unsigned int IrmsWhole;
+    unsigned int IrmsFractional;
+    unsigned int PavgWhole;
+    unsigned int PavgFractional;
+    unsigned int PappWhole;
+    unsigned int PappFractional;
 } ADCData;
 /*******************************************************************************
  *
@@ -159,6 +163,8 @@ void digitCheck(int *FirstDigit, int *SecondDigit);
 void BinaryToDecimal ( int Value, char *TenthPlace, char *OnePlace);
 
 int intSquareRoot(int Value);
+void wholeConvert (char *String, unsigned int Value);
+void fractionConvert (char *String, unsigned int Value);
 
 /*******************************************************************************
  *
@@ -385,6 +391,13 @@ long double VoltageRMS = 0;
           Pavg       = Pavg / FILTER_MAX;
           Papp       = Papp / FILTER_MAX;
 
+          /*******************************************************************
+          *             Include Fudge factor
+          *******************************************************************/
+          VoltageRMS = VoltageRMS * (long double)VRMS_CONSTANT;
+          CurrentRMS = CurrentRMS * (long double)IRMS_CONSTANT;
+           Pavg       = Pavg * (long double)PAVG_CONSTANT;
+           Papp       = Papp * (long double)PAPP_CONSTANT;
         /*******************************************************************
           *             Convert to Whole and Fractional Part
           *******************************************************************/
@@ -435,7 +448,7 @@ void buttonPush( void *pvParameters)
       {
         switch (DisplayIndex)
         {
-          case 0:
+          case 1:
             if ( (PreviousData.VrmsWhole != FilteredData.VrmsWhole) || (PreviousData.VrmsFractional != FilteredData.VrmsFractional)
               || (PreviousData.IrmsWhole != FilteredData.IrmsWhole) || (PreviousData.IrmsFractional != FilteredData.IrmsFractional))
             {
@@ -446,7 +459,7 @@ void buttonPush( void *pvParameters)
               DisplayFlag = 1; 
             }
             break;
-          case 1:
+          case 2:
             if ( (PreviousData.PavgWhole != FilteredData.PavgWhole) || (PreviousData.PavgFractional || FilteredData.PavgFractional) )
             {
               PreviousData.PavgWhole      = FilteredData.PavgWhole;
@@ -454,7 +467,7 @@ void buttonPush( void *pvParameters)
               // DisplayFlag = 1;
             }
             break;
-          case 2:
+          case 3:
             if ( (PreviousData.PappWhole != FilteredData.PappWhole) || (PreviousData.PappFractional || FilteredData.PappFractional) )
             {
               PreviousData.PappWhole      = FilteredData.PappWhole;
@@ -476,8 +489,8 @@ void buttonPush( void *pvParameters)
             Rd6ChangeStateFlag = 1;
             DisplayIndex++;
             DisplayFlag = 1;
-            if (DisplayIndex >= 4)
-                DisplayIndex = 0;
+            if (DisplayIndex >= 5)
+                DisplayIndex = 1;
             //Scan again every 100 ms
             BlockingFlag = 1;
         }
@@ -504,27 +517,37 @@ void buttonPush( void *pvParameters)
         *       -   = Leading/Lagging
         *
         *****************************************************/
-        if ((DisplayIndex == 0) && (DisplayFlag == 1))
+        if ((DisplayIndex == 1) && (DisplayFlag == 1))
         {
             asm("NOP");
-            strcpy(LCDDisplay.Line1, "Vrms = XXX.XX V ");
-            strcpy(LCDDisplay.Line2, "Irms = XXX.XX A ");
-            sprintf(&LCDDisplay.Line1[7] , "%d", PreviousData.VrmsWhole);
-            sprintf(&LCDDisplay.Line2[11], "%d", PreviousData.VrmsFractional);
+           strcpy(LCDDisplay.Line1, "Vrms = XXX.XX V ");
+           strcpy(LCDDisplay.Line2, "Irms = XXX.XX A ");
+           wholeConvert(&LCDDisplay.Line1[7], PreviousData.VrmsWhole);
+           fractionConvert(&LCDDisplay.Line1[11], PreviousData.VrmsFractional);
+           asm("NOP");
+           asm("NOP");
+           wholeConvert(&LCDDisplay.Line2[7], PreviousData.IrmsWhole);
+           fractionConvert(&LCDDisplay.Line2[11], PreviousData.IrmsFractional);
             asm("NOP");
         }
-        else if ((DisplayIndex == 1) && (DisplayFlag == 1))
+        else if ((DisplayIndex == 2) && (DisplayFlag == 1))
         {
             asm("NOP");
             strcpy(LCDDisplay.Line1, "Average Power   ");
             strcpy(LCDDisplay.Line2, "= XXX.XX W      ");
+
+            wholeConvert(&LCDDisplay.Line2[2], PreviousData.PavgWhole);
+            fractionConvert(&LCDDisplay.Line2[6], PreviousData.PavgFractional);
         }
-        else if ((DisplayIndex == 2) && (DisplayFlag == 1))
+        else if ((DisplayIndex == 3) && (DisplayFlag == 1))
         {
             strcpy(LCDDisplay.Line1, "Instan. Power   ");
             strcpy(LCDDisplay.Line2, "= XXX.XX W      ");
+
+            wholeConvert(&LCDDisplay.Line2[2], PreviousData.PappWhole);
+            fractionConvert(&LCDDisplay.Line2[6], PreviousData.PappFractional);
         }
-        else if ((DisplayIndex == 3) && (DisplayFlag == 1))
+        else if ((DisplayIndex == 4) && (DisplayFlag == 1))
         {
             strcpy(LCDDisplay.Line1, "Phase Angle     ");
             strcpy(LCDDisplay.Line2, "= Leading       ");
@@ -652,4 +675,48 @@ int intSquareRoot(int Value)
         i--;
     }
     return i;
+}
+
+void wholeConvert (char *String, unsigned int Value)
+{
+    unsigned char Hundred = 0, Ten = 0, One = 0;
+    while (Value > 99)
+    {
+        Value -= 100;
+        Hundred++;
+    }
+    while (Value > 9)
+    {
+        Value -= 10;
+        Ten++;
+    }
+    while (Value > 0)
+    {
+        Value -= 1;
+        One++;
+    }
+    *String = Hundred + '0';
+    String++;
+    *String = Ten + '0';
+    String++;
+    *String = One + '0';
+}
+
+void fractionConvert (char *String, unsigned int Value)
+{
+    unsigned char  Ten = 0, One = 0;
+
+    while (Value > 9)
+    {
+        Value -= 10;
+        Ten++;
+    }
+    while (Value > 0)
+    {
+        Value -= 1;
+        One++;
+    }
+    *String = Ten + '0';
+    String++;
+    *String = One + '0';
 }
