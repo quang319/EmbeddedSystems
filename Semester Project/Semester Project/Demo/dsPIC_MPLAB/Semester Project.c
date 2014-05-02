@@ -66,11 +66,11 @@ _FWDT(FWDTEN_OFF);
 #define FALSE 0
 #define SAMPLES 120
 #define SAMPLES_SQUARE 14400
-#define FILTER_MAX 20
+#define FILTER_MAX 10
 #define VRMS_CONSTANT 0.75269
 #define IRMS_CONSTANT 0.10753
-#define PAVG_CONSTANT 0.0080934
-#define PAPP_CONSTANT 0.0080937
+#define PAVG_CONSTANT 0.080934
+#define PAPP_CONSTANT 0.080937
 /*******************************************************************************
  *
  *                      Type definition
@@ -543,18 +543,18 @@ void buttonPush( void *pvParameters)
         {
             asm("NOP");
             strcpy(LCDDisplay.Line1, "Average Power   ");
-            strcpy(LCDDisplay.Line2, "= XXX.XX W      ");
+            strcpy(LCDDisplay.Line2, "= XXXX.X W      ");
 
-            wholeConvert(&LCDDisplay.Line2[2], PreviousData.PavgWhole);
-            fractionConvert(&LCDDisplay.Line2[6], PreviousData.PavgFractional);
+            powerWholeConvert(&LCDDisplay.Line2[2], PreviousData.PavgWhole);
+            powerFractionConvert(&LCDDisplay.Line2[7], PreviousData.PavgFractional);
         }
         else if ((DisplayIndex == 3) && (DisplayFlag == 1))
         {
             strcpy(LCDDisplay.Line1, "Instan. Power   ");
-            strcpy(LCDDisplay.Line2, "= XXX.XX W      ");
+            strcpy(LCDDisplay.Line2, "= XXXX.X W      ");
 
-            wholeConvert(&LCDDisplay.Line2[2], PreviousData.PappWhole);
-            fractionConvert(&LCDDisplay.Line2[6], PreviousData.PappFractional);
+            powerWholeConvert(&LCDDisplay.Line2[2], PreviousData.PappWhole);
+            powerFractionConvert(&LCDDisplay.Line2[7], PreviousData.PappFractional);
         }
         else if ((DisplayIndex == 4) && (DisplayFlag == 1))
         {
@@ -728,4 +728,49 @@ void fractionConvert (char *String, unsigned int Value)
     *String = Ten + '0';
     String++;
     *String = One + '0';
+}
+
+void powerWholeConvert (char *String, unsigned int Value)
+{
+    unsigned char Thousand = 0, Hundred = 0, Ten = 0, One = 0;
+    while (Value > 999)
+    {
+        Value -= 1000;
+        Thousand++;
+    }
+    while (Value > 99)
+    {
+        Value -= 100;
+        Hundred++;
+    }
+    while (Value > 9)
+    {
+        Value -= 10;
+        Ten++;
+    }
+    while (Value > 0)
+    {
+        Value -= 1;
+        One++;
+    }
+    *String = Thousand + '0';
+    String++;
+    *String = Hundred + '0';
+    String++;
+    *String = Ten + '0';
+    String++;
+    *String = One + '0';
+}
+
+void powerFractionConvert (char *String, unsigned int Value)
+{
+    unsigned char Hundred = 0;
+
+    while (Value > 9)
+    {
+        Value -= 10;
+        Hundred++;
+    }
+
+    *String = Hundred + '0';
 }
