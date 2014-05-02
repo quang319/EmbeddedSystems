@@ -79,18 +79,17 @@ typedef struct
     char Line2[17];
 } xLCD;
 
-typedef struct 
+typedef struct
 {
-    unsigned int VrmsWhole;
-    unsigned int VrmsFractional;
-    unsigned int IrmsWhole;
-    unsigned int IrmsFractional;
-    unsigned int PavgWhole;
-    unsigned int PavgFractional;
-    unsigned int PappWhole;
-    unsigned int PappFractional;
-    unsigned int Phase;
-} Calc;
+    int VrmsWhole;
+    int VrmsFractional;
+    int IrmsWhole;
+    int IrmsFractional;
+    int PavgWhole;
+    int PavgFractional;
+    int PappWhole;
+    int PappFractional;
+} ADCData;
 /*******************************************************************************
  *
  *                      Global Variable Declarations
@@ -122,7 +121,7 @@ long double PappResult[FILTER_MAX];
 int         FilterIndex = 0;
 int         DataReadyFlag = 0;
 
-Calc FilteredData;
+ ADCData FilteredData;
 
 /*******************************************************************************
  *
@@ -193,7 +192,7 @@ void initialize() {
     *               Setting up DMA and Semaphore
     *****************************************************/
      // Setting up ADC for DMA Interrupt
-      ADC_Init();
+      // ADC_Init();
     // Create semaphore for DMA interrupt
     vSemaphoreCreateBinary(DmaSemaphore);
     // Create Semaphore handle
@@ -381,7 +380,7 @@ void dmaHandler (void *pvParameters)
           FilteredData.PappWhole = (unsigned int)Papp;
           FilteredData.PappFractional = (unsigned int)( (Papp - (unsigned int)Papp ) * 100);
 
-          // I should be putting the result onto a queue here. 
+          // I should be putting the result onto a queue here.
         }
 
         asm("NOP");
@@ -409,7 +408,7 @@ void buttonPush( void *pvParameters)
     int BlockingFlag = 0;           // 0 = 10 ms
                                     // 1 = 100 ms
 
-    Calc PreviousData;
+     ADCData PreviousData;
     xQueueSendToFront(LCDDisplayinfo, &LCDDisplay,0);
     /* start endless loop*/
     for( ;; )
