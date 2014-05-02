@@ -509,6 +509,9 @@ void buttonPush( void *pvParameters)
             asm("NOP");
             strcpy(LCDDisplay.Line1, "Vrms = XXX.XX V ");
             strcpy(LCDDisplay.Line2, "Irms = XXX.XX A ");
+            sprintf(&LCDDisplay.Line1[7] , "%d", PreviousData.VrmsWhole);
+            sprintf(&LCDDisplay.Line2[11], "%d", PreviousData.VrmsFractional);
+            asm("NOP");
         }
         else if ((DisplayIndex == 1) && (DisplayFlag == 1))
         {
