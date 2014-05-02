@@ -102,10 +102,10 @@ long VoltageSumSquareAverage = 0;          // Contains result of ( ( sum(V)^2) /
 long double VoltagePreSquareRoot = 0;
 long double VoltageRMS = 0;
 
-long CurrentSum = 0, CurrentSquareSum = 0;
-long CurrentSumSquareAverage = 0;          // Contains result of ( ( sum(V)^2) / N)
-long double CurrentPreSquareRoot = 0;
-long double CurrentRMS = 0;
+// long CurrentSum = 0, CurrentSquareSum = 0;
+// long CurrentSumSquareAverage = 0;          // Contains result of ( ( sum(V)^2) / N)
+// long double CurrentPreSquareRoot = 0;
+// long double CurrentRMS = 0;
 
 long PowerSum = 0;                         // Contains sum(V*I)
 long double PowerOp1 = 0;                          // Contains ( sum(V*I) / N)
@@ -120,6 +120,7 @@ long double PappResult[FILTER_MAX];
 int         FilterIndex = 0;
 int         DataReadyFlag = 0;
 
+int i;
 ADCData FilteredData;
 
 /*******************************************************************************
@@ -247,7 +248,10 @@ void prvSetupHardware( void )
 void dmaHandler (void *pvParameters)
 {
    int *DMAptr;
-   int i;
+   long CurrentSum = 0, CurrentSquareSum = 0;
+  long CurrentSumSquareAverage = 0;          // Contains result of ( ( sum(V)^2) / N)
+  long double CurrentPreSquareRoot = 0;
+  long double CurrentRMS = 0;
    for( ;; )
    {
        // Block waiting for the semaphore to become available.
@@ -347,7 +351,7 @@ void dmaHandler (void *pvParameters)
           CurrentRMS = 0;
           Pavg       = 0;
           Papp       = 0;
-
+          i = 0;
           //Sum up the samples
           for (i = 0; i < FILTER_MAX; i++)
           {
@@ -362,7 +366,6 @@ void dmaHandler (void *pvParameters)
           CurrentRMS = CurrentRMS / FILTER_MAX;
           Pavg       = Pavg / FILTER_MAX;
           Papp       = Papp / FILTER_MAX;
-        }
 
         /*******************************************************************
           *             Convert to Whole and Fractional Part
@@ -379,11 +382,11 @@ void dmaHandler (void *pvParameters)
 
           FilteredData.PappWhole = (unsigned int)Papp;
           FilteredData.PappFractional = (unsigned int)( (Papp - (unsigned int)Papp ) * 100);
-
+        }
           // I should be putting the result onto a queue here.
 
         asm("NOP");
-          // xSemaphoreGive( DmaSemaphore );
+//           xSemaphoreGive( DmaSemaphore );
            // We have finished our task.  Return to the top of the loop where
            // we will block on the semaphore until it is time to execute
            // again.  Note when using the semaphore for synchronisation with an
