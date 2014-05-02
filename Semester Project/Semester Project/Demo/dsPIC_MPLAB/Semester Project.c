@@ -448,6 +448,16 @@ void buttonPush( void *pvParameters)
       {
         switch (DisplayIndex)
         {
+          case 0:
+            PreviousData.VrmsWhole      = FilteredData.VrmsWhole;
+            PreviousData.VrmsFractional = FilteredData.VrmsFractional;
+            PreviousData.IrmsWhole      = FilteredData.IrmsWhole;
+            PreviousData.IrmsFractional = FilteredData.IrmsFractional;
+            PreviousData.PavgWhole      = FilteredData.PavgWhole;
+            PreviousData.PavgFractional = FilteredData.PavgFractional;
+            PreviousData.PappWhole      = FilteredData.PappWhole;
+            PreviousData.PappFractional = FilteredData.PappFractional;
+            break;
           case 1:
             if ( (PreviousData.VrmsWhole != FilteredData.VrmsWhole) || (PreviousData.VrmsFractional != FilteredData.VrmsFractional)
               || (PreviousData.IrmsWhole != FilteredData.IrmsWhole) || (PreviousData.IrmsFractional != FilteredData.IrmsFractional))
@@ -460,19 +470,19 @@ void buttonPush( void *pvParameters)
             }
             break;
           case 2:
-            if ( (PreviousData.PavgWhole != FilteredData.PavgWhole) || (PreviousData.PavgFractional || FilteredData.PavgFractional) )
+            if ( (PreviousData.PavgWhole != FilteredData.PavgWhole) || (PreviousData.PavgFractional != FilteredData.PavgFractional) )
             {
               PreviousData.PavgWhole      = FilteredData.PavgWhole;
               PreviousData.PavgFractional = FilteredData.PavgFractional;
-              // DisplayFlag = 1;
+              DisplayFlag = 1;
             }
             break;
           case 3:
-            if ( (PreviousData.PappWhole != FilteredData.PappWhole) || (PreviousData.PappFractional || FilteredData.PappFractional) )
+            if ( (PreviousData.PappWhole != FilteredData.PappWhole) || (PreviousData.PappFractional != FilteredData.PappFractional) )
             {
               PreviousData.PappWhole      = FilteredData.PappWhole;
               PreviousData.PappFractional = FilteredData.PappFractional;
-              // DisplayFlag = 1;
+             DisplayFlag = 1;
             }
             break;
         }
@@ -519,13 +529,12 @@ void buttonPush( void *pvParameters)
         *****************************************************/
         if ((DisplayIndex == 1) && (DisplayFlag == 1))
         {
-            asm("NOP");
            strcpy(LCDDisplay.Line1, "Vrms = XXX.XX V ");
            strcpy(LCDDisplay.Line2, "Irms = XXX.XX A ");
+
            wholeConvert(&LCDDisplay.Line1[7], PreviousData.VrmsWhole);
            fractionConvert(&LCDDisplay.Line1[11], PreviousData.VrmsFractional);
-           asm("NOP");
-           asm("NOP");
+
            wholeConvert(&LCDDisplay.Line2[7], PreviousData.IrmsWhole);
            fractionConvert(&LCDDisplay.Line2[11], PreviousData.IrmsFractional);
             asm("NOP");
