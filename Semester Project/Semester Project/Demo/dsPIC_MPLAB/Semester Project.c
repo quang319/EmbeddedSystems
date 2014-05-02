@@ -66,6 +66,7 @@ _FWDT(FWDTEN_OFF);
 #define FALSE 0
 #define SAMPLES 120
 #define SAMPLES_SQUARE 14400
+#define FILTER_MAX 5
 
 /*******************************************************************************
  *
@@ -80,12 +81,16 @@ typedef struct
 
 typedef struct 
 {
-    int Vrms;
-    int Irms;
-    int Pavg;
-    int Papp;
-    int Phase;
-} xCalc;
+    unsigned int VrmsWhole;
+    unsigned int VrmsFractional;
+    unsigned int IrmsWhole;
+    unsigned int IrmsFractional;
+    unsigned int PavgWhole;
+    unsigned int PavgFractional;
+    unsigned int PappWhole;
+    unsigned int PappFractional;
+    unsigned int Phase;
+} Calc;
 /*******************************************************************************
  *
  *                      Global Variable Declarations
@@ -109,6 +114,15 @@ long double PowerOp1 = 0;                          // Contains ( sum(V*I) / N)
 long double PowerOp2 = 0;                          // Contains ( ( sum(V) * (sum(I) ) ) / N^2)
 long double Pavg     = 0;
 long double Papp     = 0;
+
+long double VrmsResult[FILTER_MAX];
+long double IrmsResult[FILTER_MAX];
+long double PavgResult[FILTER_MAX];
+long double PappResult[FILTER_MAX];
+int         FilterIndex = 0;
+int         DataReadyFlag = 0;
+
+Calc FilteredData;
 
 /*******************************************************************************
  *
@@ -183,7 +197,7 @@ void initialize() {
     // Create semaphore for DMA interrupt
     vSemaphoreCreateBinary(DmaSemaphore);
     // Create Semaphore handle
-    xTaskCreate(dmaHandler, "Task for DMA", 1000, NULL, 3, NULL );
+    xTaskCreate(dmaHandler, "Task for DMA", 100, NULL, 3, NULL );
     
     /*****************************************************
     *               Initialize LCD
@@ -197,7 +211,7 @@ void initialize() {
     /*****************************************************
     *               Create Tasks and Queue
     *****************************************************/
-    xTaskCreate(buttonPush,"Task Read Swtchs", 200, NULL, 2, NULL);
+    xTaskCreate(buttonPush,"Task Read Swtchs", 300, NULL, 2, NULL);
     xTaskCreate(writeLcd, "Write LCD",200, NULL, 1, NULL); //notice that this task has lower priority.
     /* create the queue for the string to be displayed.  Length = 2 each chunk holds 16 char string*/
     LCDDisplayinfo = xQueueCreate(1,sizeof (xLCD));
@@ -235,7 +249,6 @@ void prvSetupHardware( void )
 void dmaHandler (void *pvParameters)
 {
    int *DMAptr;
-   xCalc Data;
    int i;
    for( ;; )
    {
@@ -267,7 +280,9 @@ void dmaHandler (void *pvParameters)
         CurrentSquareSum = 0;
         PowerSum = 0;
         
-       // Performing all summations
+       /*******************************************************************
+        *             Performing Summations
+        *******************************************************************/
        for (i = 0; i < SAMPLES; i++)
        {
            //sum(V)
@@ -283,6 +298,9 @@ void dmaHandler (void *pvParameters)
            //sum(V*I)
            PowerSum += (long)VSignal[i] * (long)ISignal[i];
        }
+       /*******************************************************************
+        *             Vrms Calcuation
+        *******************************************************************/
        // ( sum(V)^2) / N)
        VoltageSumSquareAverage = (long)( ( (long long)VoltageSum * (long long)VoltageSum ) / SAMPLES);
        // ( ( sum(V^2) - ( ( sum(V)^2) / N) ) / N)
@@ -290,6 +308,9 @@ void dmaHandler (void *pvParameters)
        // Performing square root
        VoltageRMS = sqrt(VoltagePreSquareRoot);
 
+       /*******************************************************************
+        *             Irms Calculation
+        *******************************************************************/
        // Now do the same for Current
        CurrentSumSquareAverage = (long)( ( (long long)CurrentSum * (long long)CurrentSum ) / SAMPLES);
        // ( ( sum(V^2) - ( ( sum(V)^2) / N) ) / N)
@@ -297,16 +318,72 @@ void dmaHandler (void *pvParameters)
        // Performing square root
        CurrentRMS = sqrt(CurrentPreSquareRoot);
 
+       /*******************************************************************
+        *             Power Calculation
+        *******************************************************************/
         PowerOp1 = (long double)PowerSum / SAMPLES;
         PowerOp2 = (long double)( ( (long double)VoltageSum * (long double)CurrentSum ) / SAMPLES_SQUARE);
         Pavg = PowerOp1 - PowerOp2;
         Papp = VoltageRMS * CurrentRMS;
 
-        // Shift everything over by 100
-        VoltageRMS *= 100;
-        CurrentRMS *= 100;
-        Pavg       *= 100;
-        Papp       *= 100;
+        /*******************************************************************
+        *             Storing the Result
+        *******************************************************************/
+        VrmsResult[FilterIndex] = VoltageRMS;
+        IrmsResult[FilterIndex] = CurrentRMS;
+        PavgResult[FilterIndex] = Pavg;
+        PappResult[FilterIndex] = Papp;
+        FilterIndex++;
+
+        /*******************************************************************
+        *             Performing low pass filter
+        *******************************************************************/
+        if (FilterIndex >= FILTER_MAX)
+        {
+          // Set index to zero
+          FilterIndex = 0;
+          // Setting the flag
+          DataReadyFlag = 1;
+          // Clear all the variables first
+          VoltageRMS = 0;
+          CurrentRMS = 0;
+          Pavg       = 0;
+          Papp       = 0;
+
+          //Sum up the samples
+          for (i = 0; i < FILTER_MAX; i++)
+          {
+            VoltageRMS += VrmsResult[i];
+            CurrentRMS += IrmsResult[i];
+            Pavg       += PavgResult[i];
+            Papp       += PappResult[i];
+          }
+
+          // And then average them
+          VoltageRMS = VoltageRMS / FILTER_MAX;
+          CurrentRMS = CurrentRMS / FILTER_MAX;
+          Pavg       = Pavg / FILTER_MAX;
+          Papp       = Papp / FILTER_MAX;
+
+          /*******************************************************************
+          *             Convert to Whole and Fractional Part
+          *******************************************************************/
+          
+          FilteredData.VrmsWhole = (unsigned int)VoltageRMS;
+          FilteredData.VrmsFractional = (unsigned int)( (VoltageRMS - (unsigned int)VoltageRMS ) * 100);
+
+          FilteredData.IrmsWhole = (unsigned int)CurrentRMS;
+          FilteredData.IrmsFractional = (unsigned int)( (CurrentRMS - (unsigned int)CurrentRMS ) * 100);
+
+          FilteredData.PavgWhole = (unsigned int)Pavg;
+          FilteredData.PavgFractional = (unsigned int)( (Pavg - (unsigned int)Pavg ) * 100);
+
+          FilteredData.PappWhole = (unsigned int)Papp;
+          FilteredData.PappFractional = (unsigned int)( (Papp - (unsigned int)Papp ) * 100);
+
+          // I should be putting the result onto a queue here. 
+        }
+
         asm("NOP");
           // xSemaphoreGive( DmaSemaphore );
            // We have finished our task.  Return to the top of the loop where
@@ -331,84 +408,118 @@ void buttonPush( void *pvParameters)
     int Rd6ChangeStateFlag = 0;     // Use to indicate whether the user is holding down the button
     int BlockingFlag = 0;           // 0 = 10 ms
                                     // 1 = 100 ms
+
+    Calc PreviousData;
     xQueueSendToFront(LCDDisplayinfo, &LCDDisplay,0);
     /* start endless loop*/
     for( ;; )
     {
-        /*****************************************************
-        *   Capture button presses
-        *   Increment DisplayIndex if S3 is pressed
-        *   Roll back to 0 after 3
-        *****************************************************/
-        // if RD6(S3) is pressed
-        // Display count on LCD
-        if ( (_RD6 == 0) && (Rd6ChangeStateFlag == 0))
+      if (DataReadyFlag == 1)
+      {
+        switch (DisplayIndex)
         {
-            Rd6ChangeStateFlag = 1;
-            DisplayIndex++;
-            DisplayFlag = 1;
-            if (DisplayIndex >= 4)
-                DisplayIndex = 0;
-            //Scan again every 100 ms
-            BlockingFlag = 1;
+          case 0:
+            if ( (PreviousData.VrmsWhole != FilteredData.VrmsWhole) || (PreviousData.VrmsFractional != FilteredData.VrmsFractional)
+              || (PreviousData.IrmsWhole != FilteredData.IrmsWhole) || (PreviousData.IrmsFractional != FilteredData.IrmsFractional))
+            {
+              PreviousData.VrmsWhole      = FilteredData.VrmsWhole;
+              PreviousData.VrmsFractional = FilteredData.VrmsFractional;
+              PreviousData.IrmsWhole      = FilteredData.IrmsWhole;
+              PreviousData.IrmsFractional = FilteredData.IrmsFractional;
+              // DisplayFlag = 1; 
+            }
+            break;
+          case 1:
+            if ( (PreviousData.PavgWhole != FilteredData.PavgWhole) || (PreviousData.PavgFractional || FilteredData.PavgFractional) )
+            {
+              PreviousData.PavgWhole      = FilteredData.PavgWhole;
+              PreviousData.PavgFractional = FilteredData.PavgFractional;
+              // DisplayFlag = 1;
+            }
+            break;
+          case 2:
+            if ( (PreviousData.PappWhole != FilteredData.PappWhole) || (PreviousData.PappFractional || FilteredData.PappFractional) )
+            {
+              PreviousData.PappWhole      = FilteredData.PappWhole;
+              PreviousData.PappFractional = FilteredData.PappFractional;
+              // DisplayFlag = 1;
+            }
         }
-        // If the user just released the button
-        else if ( (_RD6 == 1) && (Rd6ChangeStateFlag == 1))
-        {
-            Rd6ChangeStateFlag = 0;
-            BlockingFlag = 0;
-        }
+      }
+      /*****************************************************
+      *   Capture button presses
+      *   Increment DisplayIndex if S3 is pressed
+      *   Roll back to 0 after 3
+      *****************************************************/
+      // if RD6(S3) is pressed
+      // Display count on LCD
+      if ( (_RD6 == 0) && (Rd6ChangeStateFlag == 0))
+      {
+          Rd6ChangeStateFlag = 1;
+          DisplayIndex++;
+          DisplayFlag = 1;
+          if (DisplayIndex >= 4)
+              DisplayIndex = 0;
+          //Scan again every 100 ms
+          BlockingFlag = 1;
+      }
+      // If the user just released the button
+      else if ( (_RD6 == 1) && (Rd6ChangeStateFlag == 1))
+      {
+          Rd6ChangeStateFlag = 0;
+          BlockingFlag = 0;
+      }
 
-        /*****************************************************
-        *  Loading the queue with the proper message
-        *   Screen 0
-        *       -   Vrms = XXX.XX V
-        *       -   Irms = XXX.XX A
-        *   Screen 1
-        *       -   Average Power
-        *       -   = XXX.XX W
-        *   Screen 2
-        *       -   Instan. Power
-        *       -   = XXX.XX VA
-        *   Screen 3
-        *       -   Phase Angle
-        *       -   = Leading/Lagging
-        *
-        *****************************************************/
-        if ((DisplayIndex == 0) && (DisplayFlag == 1))
-        {
-            strcpy(LCDDisplay.Line1, "Vrms = XXX.XX V ");
-            strcpy(LCDDisplay.Line2, "Irms = XXX.XX A ");
-        }
-        else if ((DisplayIndex == 1) && (DisplayFlag == 1))
-        {
-            strcpy(LCDDisplay.Line1, "Average Power   ");
-            strcpy(LCDDisplay.Line2, "= XXX.XX W      ");
-        }
-        else if ((DisplayIndex == 2) && (DisplayFlag == 1))
-        {
-            strcpy(LCDDisplay.Line1, "Instan. Power   ");
-            strcpy(LCDDisplay.Line2, "= XXX.XX W      ");
-        }
-        else if ((DisplayIndex == 3) && (DisplayFlag == 1))
-        {
-            strcpy(LCDDisplay.Line1, "Phase Angle     ");
-            strcpy(LCDDisplay.Line2, "= Leading       ");
-        }
+      /*****************************************************
+      *  Loading the queue with the proper message
+      *   Screen 0
+      *       -   Vrms = XXX.XX V
+      *       -   Irms = XXX.XX A
+      *   Screen 1
+      *       -   Average Power
+      *       -   = XXX.XX W
+      *   Screen 2
+      *       -   Instan. Power
+      *       -   = XXX.XX VA
+      *   Screen 3
+      *       -   Phase Angle
+      *       -   = Leading/Lagging
+      *
+      *****************************************************/
+      if ((DisplayIndex == 0) && (DisplayFlag == 1))
+      {
+          strcpy(LCDDisplay.Line1, "Vrms = XXX.XX V ");
+          strcpy(LCDDisplay.Line2, "Irms = XXX.XX A ");
+      }
+      else if ((DisplayIndex == 1) && (DisplayFlag == 1))
+      {
+          strcpy(LCDDisplay.Line1, "Average Power   ");
+          strcpy(LCDDisplay.Line2, "= XXX.XX W      ");
+      }
+      else if ((DisplayIndex == 2) && (DisplayFlag == 1))
+      {
+          strcpy(LCDDisplay.Line1, "Instan. Power   ");
+          strcpy(LCDDisplay.Line2, "= XXX.XX W      ");
+      }
+      else if ((DisplayIndex == 3) && (DisplayFlag == 1))
+      {
+          strcpy(LCDDisplay.Line1, "Phase Angle     ");
+          strcpy(LCDDisplay.Line2, "= Leading       ");
+      }
 
-        if (DisplayFlag == 1)
-        {
-            xQueueSendToFront(LCDDisplayinfo, &LCDDisplay,0);
-            DisplayFlag = 0;
-        }
+      if (DisplayFlag == 1)
+      {
+          xQueueSendToFront(LCDDisplayinfo, &LCDDisplay,0);
+          DisplayFlag = 0;
+      }
 
-        // How long to block depends on if the user is holding the button down or not.
-        // If hold = delay for 100 ms
-        // if not holding = delay for 10 ms
-        if (BlockingFlag == 0){
-            vTaskDelay(10/ portTICK_RATE_MS); }
-        else
-            vTaskDelay(100/ portTICK_RATE_MS);
+      // How long to block depends on if the user is holding the button down or not.
+      // If hold = delay for 100 ms
+      // if not holding = delay for 10 ms
+      if (BlockingFlag == 0){
+          vTaskDelay(10/ portTICK_RATE_MS); }
+      else
+          vTaskDelay(100/ portTICK_RATE_MS);
     } // end of for loop
 }
 
