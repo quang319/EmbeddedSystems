@@ -66,7 +66,7 @@ _FWDT(FWDTEN_OFF);
 #define FALSE 0
 #define SAMPLES 120
 #define SAMPLES_SQUARE 14400
-
+#define FILTER_MAX 5
 /*******************************************************************************
  *
  *                      Type definition
@@ -78,14 +78,17 @@ typedef struct
     char Line2[17];
 } xLCD;
 
-typedef struct 
+typedef struct
 {
-    int Vrms;
-    int Irms;
-    int Pavg;
-    int Papp;
-    int Phase;
-} xCalc;
+    int VrmsWhole;
+    int VrmsFractional;
+    int IrmsWhole;
+    int IrmsFractional;
+    int PavgWhole;
+    int PavgFractional;
+    int PappWhole;
+    int PappFractional;
+} ADCData;
 /*******************************************************************************
  *
  *                      Global Variable Declarations
@@ -109,6 +112,15 @@ long double PowerOp1 = 0;                          // Contains ( sum(V*I) / N)
 long double PowerOp2 = 0;                          // Contains ( ( sum(V) * (sum(I) ) ) / N^2)
 long double Pavg     = 0;
 long double Papp     = 0;
+
+long double VrmsResult[FILTER_MAX];
+long double IrmsResult[FILTER_MAX];
+long double PavgResult[FILTER_MAX];
+long double PappResult[FILTER_MAX];
+int         FilterIndex = 0;
+int         DataReadyFlag = 0;
+
+ADCData FilteredData;
 
 /*******************************************************************************
  *
@@ -235,7 +247,6 @@ void prvSetupHardware( void )
 void dmaHandler (void *pvParameters)
 {
    int *DMAptr;
-   xCalc Data;
    int i;
    for( ;; )
    {
@@ -267,7 +278,9 @@ void dmaHandler (void *pvParameters)
         CurrentSquareSum = 0;
         PowerSum = 0;
         
-       // Performing all summations
+       /*******************************************************************
+        *             Performing Summations
+        *******************************************************************/
        for (i = 0; i < SAMPLES; i++)
        {
            //sum(V)
@@ -283,6 +296,9 @@ void dmaHandler (void *pvParameters)
            //sum(V*I)
            PowerSum += (long)VSignal[i] * (long)ISignal[i];
        }
+       /*******************************************************************
+        *             Vrms Calcuation
+        *******************************************************************/
        // ( sum(V)^2) / N)
        VoltageSumSquareAverage = (long)( ( (long long)VoltageSum * (long long)VoltageSum ) / SAMPLES);
        // ( ( sum(V^2) - ( ( sum(V)^2) / N) ) / N)
@@ -290,6 +306,9 @@ void dmaHandler (void *pvParameters)
        // Performing square root
        VoltageRMS = sqrt(VoltagePreSquareRoot);
 
+       /*******************************************************************
+        *             Irms Calculation
+        *******************************************************************/
        // Now do the same for Current
        CurrentSumSquareAverage = (long)( ( (long long)CurrentSum * (long long)CurrentSum ) / SAMPLES);
        // ( ( sum(V^2) - ( ( sum(V)^2) / N) ) / N)
@@ -297,16 +316,72 @@ void dmaHandler (void *pvParameters)
        // Performing square root
        CurrentRMS = sqrt(CurrentPreSquareRoot);
 
+       /*******************************************************************
+        *             Power Calculation
+        *******************************************************************/
         PowerOp1 = (long double)PowerSum / SAMPLES;
         PowerOp2 = (long double)( ( (long double)VoltageSum * (long double)CurrentSum ) / SAMPLES_SQUARE);
         Pavg = PowerOp1 - PowerOp2;
         Papp = VoltageRMS * CurrentRMS;
 
-        // Shift everything over by 100
-        VoltageRMS *= 100;
-        CurrentRMS *= 100;
-        Pavg       *= 100;
-        Papp       *= 100;
+        /*******************************************************************
+        *             Storing the Result
+        *******************************************************************/
+         VrmsResult[FilterIndex] = VoltageRMS;
+         IrmsResult[FilterIndex] = CurrentRMS;
+         PavgResult[FilterIndex] = Pavg;
+         PappResult[FilterIndex] = Papp;
+         FilterIndex++;
+         
+        /*******************************************************************
+        *             Performing low pass filter
+        *******************************************************************/
+        if (FilterIndex >= FILTER_MAX)
+        {
+          // Set index to zero
+          FilterIndex = 0;
+          // Setting the flag
+          DataReadyFlag = 1;
+          // Clear all the variables first
+          VoltageRMS = 0;
+          CurrentRMS = 0;
+          Pavg       = 0;
+          Papp       = 0;
+
+          //Sum up the samples
+          for (i = 0; i < FILTER_MAX; i++)
+          {
+            VoltageRMS += VrmsResult[i];
+            CurrentRMS += IrmsResult[i];
+            Pavg       += PavgResult[i];
+            Papp       += PappResult[i];
+          }
+
+          // And then average them
+          VoltageRMS = VoltageRMS / FILTER_MAX;
+          CurrentRMS = CurrentRMS / FILTER_MAX;
+          Pavg       = Pavg / FILTER_MAX;
+          Papp       = Papp / FILTER_MAX;
+        }
+
+        /*******************************************************************
+          *             Convert to Whole and Fractional Part
+          *******************************************************************/
+          
+          FilteredData.VrmsWhole = (unsigned int)VoltageRMS;
+          FilteredData.VrmsFractional = (unsigned int)( (VoltageRMS - (unsigned int)VoltageRMS ) * 100);
+
+          FilteredData.IrmsWhole = (unsigned int)CurrentRMS;
+          FilteredData.IrmsFractional = (unsigned int)( (CurrentRMS - (unsigned int)CurrentRMS ) * 100);
+
+          FilteredData.PavgWhole = (unsigned int)Pavg;
+          FilteredData.PavgFractional = (unsigned int)( (Pavg - (unsigned int)Pavg ) * 100);
+
+          FilteredData.PappWhole = (unsigned int)Papp;
+          FilteredData.PappFractional = (unsigned int)( (Papp - (unsigned int)Papp ) * 100);
+
+          // I should be putting the result onto a queue here.
+
         asm("NOP");
           // xSemaphoreGive( DmaSemaphore );
            // We have finished our task.  Return to the top of the loop where
@@ -323,7 +398,7 @@ void buttonPush( void *pvParameters)
     10 ms it needs to only run every 10 ms or l00ms if in the middle of a button push read.
     The API for a delay is: vTaskDelay(10); to delay for 10ms before being active again */
 
-    
+    ADCData PreviousData;
     xLCD LCDDisplay = {.Line1 = "Welcome! Please ", .Line2 = "Press S3 to Cont"};
     char DisplayIndex = 0;
     char DisplayFlag = 0;
@@ -335,6 +410,38 @@ void buttonPush( void *pvParameters)
     /* start endless loop*/
     for( ;; )
     {
+      if (DataReadyFlag == 1)
+      {
+        switch (DisplayIndex)
+        {
+          case 0:
+            if ( (PreviousData.VrmsWhole != FilteredData.VrmsWhole) || (PreviousData.VrmsFractional != FilteredData.VrmsFractional)
+              || (PreviousData.IrmsWhole != FilteredData.IrmsWhole) || (PreviousData.IrmsFractional != FilteredData.IrmsFractional))
+            {
+              PreviousData.VrmsWhole      = FilteredData.VrmsWhole;
+              PreviousData.VrmsFractional = FilteredData.VrmsFractional;
+              PreviousData.IrmsWhole      = FilteredData.IrmsWhole;
+              PreviousData.IrmsFractional = FilteredData.IrmsFractional;
+              // DisplayFlag = 1; 
+            }
+            break;
+          case 1:
+            if ( (PreviousData.PavgWhole != FilteredData.PavgWhole) || (PreviousData.PavgFractional || FilteredData.PavgFractional) )
+            {
+              PreviousData.PavgWhole      = FilteredData.PavgWhole;
+              PreviousData.PavgFractional = FilteredData.PavgFractional;
+              // DisplayFlag = 1;
+            }
+            break;
+          case 2:
+            if ( (PreviousData.PappWhole != FilteredData.PappWhole) || (PreviousData.PappFractional || FilteredData.PappFractional) )
+            {
+              PreviousData.PappWhole      = FilteredData.PappWhole;
+              PreviousData.PappFractional = FilteredData.PappFractional;
+              // DisplayFlag = 1;
+            }
+        }
+      }
         /*****************************************************
         *   Capture button presses
         *   Increment DisplayIndex if S3 is pressed
