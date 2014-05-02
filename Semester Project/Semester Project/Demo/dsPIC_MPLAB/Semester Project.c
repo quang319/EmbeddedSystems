@@ -97,31 +97,33 @@ typedef struct
 xQueueHandle LCDDisplayinfo;
 unsigned int VSignal[120], ISignal[120];
 
-long VoltageSum = 0, VoltageSquareSum = 0;
-long VoltageSumSquareAverage = 0;          // Contains result of ( ( sum(V)^2) / N)
-long double VoltagePreSquareRoot = 0;
-long double VoltageRMS = 0;
+//long VoltageSum = 0, VoltageSquareSum = 0;
+//long VoltageSumSquareAverage = 0;          // Contains result of ( ( sum(V)^2) / N)
+//long double VoltagePreSquareRoot = 0;
+//long double VoltageRMS = 0;
 
 // long CurrentSum = 0, CurrentSquareSum = 0;
 // long CurrentSumSquareAverage = 0;          // Contains result of ( ( sum(V)^2) / N)
 // long double CurrentPreSquareRoot = 0;
 // long double CurrentRMS = 0;
 
-long PowerSum = 0;                         // Contains sum(V*I)
-long double PowerOp1 = 0;                          // Contains ( sum(V*I) / N)
-long double PowerOp2 = 0;                          // Contains ( ( sum(V) * (sum(I) ) ) / N^2)
-long double Pavg     = 0;
-long double Papp     = 0;
+//long PowerSum = 0;                         // Contains sum(V*I)
+//long double PowerOp1 = 0;                          // Contains ( sum(V*I) / N)
+//long double PowerOp2 = 0;                          // Contains ( ( sum(V) * (sum(I) ) ) / N^2)
+//long double Pavg     = 0;
+//long double Papp     = 0;
+//
+//long double VrmsResult[FILTER_MAX];
+//long double IrmsResult[FILTER_MAX];
+//long double PavgResult[FILTER_MAX];
+//long double PappResult[FILTER_MAX];
 
-long double VrmsResult[FILTER_MAX];
-long double IrmsResult[FILTER_MAX];
-long double PavgResult[FILTER_MAX];
-long double PappResult[FILTER_MAX];
 int         FilterIndex = 0;
 int         DataReadyFlag = 0;
 
 int i;
 ADCData FilteredData;
+ADCData PreviousData;
 
 /*******************************************************************************
  *
@@ -252,6 +254,22 @@ void dmaHandler (void *pvParameters)
   long CurrentSumSquareAverage = 0;          // Contains result of ( ( sum(V)^2) / N)
   long double CurrentPreSquareRoot = 0;
   long double CurrentRMS = 0;
+
+  long PowerSum = 0;                         // Contains sum(V*I)
+long double PowerOp1 = 0;                          // Contains ( sum(V*I) / N)
+long double PowerOp2 = 0;                          // Contains ( ( sum(V) * (sum(I) ) ) / N^2)
+long double Pavg     = 0;
+long double Papp     = 0;
+
+long double VrmsResult[FILTER_MAX];
+long double IrmsResult[FILTER_MAX];
+long double PavgResult[FILTER_MAX];
+long double PappResult[FILTER_MAX];
+
+long VoltageSum = 0, VoltageSquareSum = 0;
+long VoltageSumSquareAverage = 0;          // Contains result of ( ( sum(V)^2) / N)
+long double VoltagePreSquareRoot = 0;
+long double VoltageRMS = 0;
    for( ;; )
    {
        // Block waiting for the semaphore to become available.
@@ -401,7 +419,7 @@ void buttonPush( void *pvParameters)
     10 ms it needs to only run every 10 ms or l00ms if in the middle of a button push read.
     The API for a delay is: vTaskDelay(10); to delay for 10ms before being active again */
 
-    ADCData PreviousData;
+//    ADCData PreviousData;
     xLCD LCDDisplay = {.Line1 = "Welcome! Please ", .Line2 = "Press S3 to Cont"};
     char DisplayIndex = 0;
     char DisplayFlag = 0;
@@ -425,7 +443,7 @@ void buttonPush( void *pvParameters)
               PreviousData.VrmsFractional = FilteredData.VrmsFractional;
               PreviousData.IrmsWhole      = FilteredData.IrmsWhole;
               PreviousData.IrmsFractional = FilteredData.IrmsFractional;
-              // DisplayFlag = 1; 
+              DisplayFlag = 1; 
             }
             break;
           case 1:
@@ -443,6 +461,7 @@ void buttonPush( void *pvParameters)
               PreviousData.PappFractional = FilteredData.PappFractional;
               // DisplayFlag = 1;
             }
+            break;
         }
       }
         /*****************************************************
@@ -487,11 +506,13 @@ void buttonPush( void *pvParameters)
         *****************************************************/
         if ((DisplayIndex == 0) && (DisplayFlag == 1))
         {
+            asm("NOP");
             strcpy(LCDDisplay.Line1, "Vrms = XXX.XX V ");
             strcpy(LCDDisplay.Line2, "Irms = XXX.XX A ");
         }
         else if ((DisplayIndex == 1) && (DisplayFlag == 1))
         {
+            asm("NOP");
             strcpy(LCDDisplay.Line1, "Average Power   ");
             strcpy(LCDDisplay.Line2, "= XXX.XX W      ");
         }
